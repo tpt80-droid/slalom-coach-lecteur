@@ -2,6 +2,7 @@ import React, {useEffect,useRef,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {validate,visibleEvents,activeAudio,followerTarget,baseName,formatTime,TYPES} from './timeline.js';
 import './style.css';
+import OneDrivePanel from './OneDrivePanel.jsx';
 
 function Drawing({event,ratio}) {
   const d=event.data,w=1000,h=w/ratio,u=Math.min(w,h);
@@ -109,7 +110,7 @@ function Player({model,sources,onMessage}) {
       <div className="stage" ref={containerRef} style={{aspectRatio:model.canvasAspectRatio}}>
         <div className={`grid count-${model.videos.length}`}>
           {model.videos.map((video,i)=><div className="angle" key={i}>
-            <video ref={element=>{refs.current[i]=element;}} src={sources[`v${i}`]||undefined} playsInline preload="metadata" muted={i!==0} onError={()=>onMessage(`Angle ${i+1} : format vidéo non pris en charge ou fichier illisible.`)} onLoadedMetadata={()=>{if(i)syncRef.current(current.current.time,current.current.run,true);}}/>
+            <video ref={element=>{refs.current[i]=element;}} src={sources[`v${i}`]||undefined} playsInline preload="metadata" muted={i!==0} onError={()=>onMessage(`Angle ${i+1} : fichier illisible, format incompatible ou lien expiré. Pour OneDrive, utilise « Ouvrir / actualiser ».`)} onLoadedMetadata={()=>{if(i)syncRef.current(current.current.time,current.current.run,true);}}/>
             <span className="angle-label">{String(i+1).padStart(2,'0')} · {i===0?'MAÎTRE':`ANGLE · ${model.syncOffsets[i]} ms`}</span>
             {!sources[`v${i}`]&&<div className="unavailable">Sélectionne la vidéo {i+1}</div>}
             {i>0&&sources[`v${i}`]&&!followerTarget(time,model.syncOffsets[i],refs.current[i]?.duration||Infinity).inRange&&<div className="unavailable">Angle hors plage</div>}
@@ -152,16 +153,19 @@ function App(){
     }catch(error){setMessage(error.message);}
   }
   function choose(key,file){if(!file)return;setSources(previous=>({...previous,[key]:bind(key,file)}));setRevision(n=>n+1);setMessage('');}
+  function closeAnalysis(){loadId.current++;setModel(null);setSources({});clearUrls();return loadId.current;}
+  function openCloud(result,ticket){if(ticket!==loadId.current)return;loadId.current++;clearUrls();setModel(result.model);setSources(result.sources);setName(result.name);setRevision(n=>n+1);}
   const audioEvents=model?.events.filter(e=>e.type==='audio')||[];
   return <main>
-    <header><div className="brand"><span className="brand-mark">SC</span><div><strong>SLALOM COACH</strong><span>ANALYSE VIDÉO</span></div></div><div className="header-actions"><span className="local-badge">Lecture locale · aucun envoi</span><label className="button secondary">Ouvrir une analyse<input type="file" multiple accept=".json,video/*,audio/*" onChange={e=>{openFiles(e.target.files);e.target.value='';}}/></label></div></header>
+    <header><div className="brand"><span className="brand-mark">SC</span><div><strong>SLALOM COACH</strong><span>ANALYSE VIDÉO</span></div></div><div className="header-actions"><span className="local-badge">Fichiers locaux ou OneDrive</span><label className="button secondary">Ouvrir une analyse<input type="file" multiple accept=".json,video/*,audio/*" onChange={e=>{openFiles(e.target.files);e.target.value='';}}/></label></div></header>
     <div className="page-title"><div><p className="eyebrow">ESPACE ATHLÈTE</p><h1>{model?'Revoir le passage':'Lire une analyse'}</h1><p>{model?`${name} · ${model.videos.length} angle${model.videos.length>1?'s':''}`:'Ouvre une analyse du coach pour retrouver ses dessins et ses commentaires au bon instant.'}</p></div>{model&&<button onClick={()=>{loadId.current++;setModel(null);setSources({});clearUrls();}}>Fermer</button>}</div>
     {message&&<div className="message" role="alert"><span>{message}</span><button aria-label="Fermer le message" onClick={()=>setMessage('')}>×</button></div>}
+    <OneDrivePanel onLoad={openCloud} onClear={closeAnalysis} onMessage={setMessage}/>
     {!model?<section className="empty"><div className="empty-mark" aria-hidden="true">▶</div><h2>Ton analyse, dans le navigateur</h2><p>Sélectionne <strong>analyse.json</strong> et les médias exportés par l’application. Tu peux aussi associer chaque fichier après l’ouverture.</p><div className="buttons"><label className="button primary">Choisir les fichiers<input type="file" multiple accept=".json,video/*,audio/*" onChange={e=>{openFiles(e.target.files);e.target.value='';}}/></label><label className="button">Ouvrir un dossier<input type="file" webkitdirectory="" multiple onChange={e=>{openFiles(e.target.files);e.target.value='';}}/></label></div><p className="hint">Les fichiers restent sur ton appareil. Aucun compte nécessaire pour ce test.</p></section>:<>
       <Player key={revision} model={model} sources={sources} onMessage={setMessage}/>
       <details className="media" open={!model.videos.every((_,i)=>sources[`v${i}`])}><summary>Fichiers de l’analyse <span>{Object.keys(sources).length} associé(s)</span></summary><div className="media-grid">{model.videos.map((v,i)=><label className="media-item" key={i}><strong>Vidéo {i+1}{i===0?' · Maître':''}</strong><span>{baseName(v)}</span><span className={sources[`v${i}`]?'ready':'missing'}>{sources[`v${i}`]?'Fichier associé':'Fichier à sélectionner'}</span><input aria-label={`Fichier vidéo ${i+1}`} type="file" accept="video/*" onChange={e=>choose(`v${i}`,e.target.files[0])}/></label>)}{audioEvents.map(e=><label className="media-item" key={e.id}><strong>Note · {formatTime(e.time)}</strong><span>{baseName(e)}</span><span className={sources[e.id]?'ready':'missing'}>{sources[e.id]?'Fichier associé':'Fichier à sélectionner'}</span><input aria-label={`Note ${formatTime(e.time)}`} type="file" accept="audio/*,video/mp4" onChange={event=>choose(e.id,event.target.files[0])}/></label>)}</div></details>
     </>}
-    <footer><span>SLALOM COACH PRO</span><span>Portail de lecture · Phase 2 locale</span></footer>
+    <footer><span>SLALOM COACH PRO</span><span>Portail de lecture · OneDrive</span></footer>
   </main>;
 }
 createRoot(document.getElementById('root')).render(<App/>);
