@@ -1,13 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {validate,visibleEvents,activeAudio,followerTarget} from '../src/timeline.js';
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-
-export default defineConfig({
-  plugins: [react()],
-  base: '/slalom-coach-lecteur/' // 👈 INDISPENSABLE POUR GITHUB PAGES
-})
 const path=(time,duration=3000)=>({type:'path',time,duration,data:{color:'red',points:[{x:.5,y:.5}]}});
 const raw={syncOffsets:[0,1200,-500,0],videos:[{uri:'file://a.mp4'}],events:[]};
 test('bornes inclusives et retour arrière',()=>{const e=[path(1000)];assert.equal(visibleEvents(e,999).length,0);assert.equal(visibleEvents(e,1000).length,1);assert.equal(visibleEvents(e,4000).length,1);assert.equal(visibleEvents(e,4001).length,0);assert.equal(visibleEvents(e,2000).length,1);});
