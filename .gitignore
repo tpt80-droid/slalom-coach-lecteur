@@ -1,0 +1,4 @@
+node_modules/
+dist/
+*.png
+ui-check.cjs

@@ -1,0 +1,105 @@
+{
+  "schemaVersion": 1,
+  "canvasAspectRatio": 1.7777777777777777,
+  "coordinateSpace": "normalized",
+  "layout": "grid",
+  "contentFit": "contain",
+  "syncOffsets": [
+    0,
+    500,
+    -500,
+    0
+  ],
+  "videos": [
+    {
+      "file": "demonstration.mp4",
+      "name": "D\u00e9monstration 1"
+    },
+    {
+      "file": "demonstration.mp4",
+      "name": "D\u00e9monstration 2"
+    },
+    {
+      "file": "demonstration.mp4",
+      "name": "D\u00e9monstration 3"
+    },
+    {
+      "file": "demonstration.mp4",
+      "name": "D\u00e9monstration 4"
+    }
+  ],
+  "events": [
+    {
+      "time": 500,
+      "duration": 1500,
+      "type": "path",
+      "data": {
+        "color": "red",
+        "points": [
+          {
+            "x": 0.1,
+            "y": 0.1
+          },
+          {
+            "x": 0.25,
+            "y": 0.3
+          }
+        ]
+      }
+    },
+    {
+      "time": 1000,
+      "duration": 3000,
+      "type": "arrow",
+      "data": {
+        "color": "#ffe600",
+        "p1": {
+          "x": 0.55,
+          "y": 0.2
+        },
+        "p2": {
+          "x": 0.8,
+          "y": 0.3
+        }
+      }
+    },
+    {
+      "time": 1000,
+      "duration": 1000,
+      "type": "audio",
+      "file": "note.m4a"
+    },
+    {
+      "time": 2000,
+      "duration": 2000,
+      "type": "text",
+      "data": {
+        "color": "white",
+        "x": 0.1,
+        "y": 0.7,
+        "text": "D\u00e9monstration",
+        "fontSize": 0.045
+      }
+    },
+    {
+      "time": 2500,
+      "type": "clear_all"
+    },
+    {
+      "time": 3000,
+      "duration": 2000,
+      "type": "circle",
+      "data": {
+        "color": "#00e676",
+        "p1": {
+          "x": 0.6,
+          "y": 0.65
+        },
+        "p2": {
+          "x": 0.7,
+          "y": 0.65
+        }
+      }
+    }
+  ]
+}
