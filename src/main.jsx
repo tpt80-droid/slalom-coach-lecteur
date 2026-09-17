@@ -1,3 +1,5 @@
+import ArchiveViewer from './ArchiveViewer.jsx';
+import {validateArchive,archiveMedia} from './archive.js';
 import React, {useEffect,useRef,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {validate,visibleEvents,activeAudio,followerTarget,baseName,formatTime,TYPES} from './timeline.js';
@@ -133,35 +135,39 @@ function Player({model,sources,onMessage}) {
 }
 
 function App(){
+  const [archive,setArchive]=useState(null);
   const [model,setModel]=useState(null),[sources,setSources]=useState({}),[name,setName]=useState(''),[message,setMessage]=useState(''),[revision,setRevision]=useState(0);
   const urls=useRef(new Map()),loadId=useRef(0);
   function clearUrls(){urls.current.forEach(url=>URL.revokeObjectURL(url));urls.current.clear();}
   useEffect(()=>()=>{loadId.current++;clearUrls();},[]);
   function bind(key,file){const url=URL.createObjectURL(file);const previous=urls.current.get(key);urls.current.set(key,url);if(previous)URL.revokeObjectURL(previous);return url;}
   async function openFiles(list){
-    const files=Array.from(list),jsons=files.filter(f=>f.name.toLowerCase().endsWith('.json'));
+    const files=Array.from(list),jsons=files.filter(f=>['analyse.json','archive.json'].includes(f.name.toLowerCase()));
     const id=++loadId.current;
     try{
-      if(jsons.length!==1)throw new Error('Sélectionne exactement un analyse.json, accompagné des vidéos et audios si disponibles.');
+      if(jsons.length!==1)throw new Error('Sélectionne un archive.json ou un analyse.json, accompagné de ses médias.');
       if(jsons[0].size>10*1024*1024)throw new Error('Le JSON dépasse 10 Mo.');
-      const next=validate(JSON.parse(await jsons[0].text()));if(id!==loadId.current)return;
+      const raw=JSON.parse(await jsons[0].text());
+      const nextArchive=raw.documentType==='archive'?validateArchive(raw):null;
+      const next=nextArchive?null:validate(raw);if(id!==loadId.current)return;
       const mapping=new Map();files.forEach(f=>{if(mapping.has(f.name))mapping.set(f.name,null);else mapping.set(f.name,f);});
       clearUrls();const linked={};
-      next.videos.forEach((v,i)=>{const f=mapping.get(baseName(v));if(f)linked[`v${i}`]=bind(`v${i}`,f);});
-      next.events.filter(e=>e.type==='audio').forEach(e=>{const f=mapping.get(baseName(e));if(f)linked[e.id]=bind(e.id,f);});
-      setSources(linked);setModel(next);setName(jsons[0].webkitRelativePath?.split('/')[0]||jsons[0].name);setRevision(n=>n+1);setMessage('');
+      if(nextArchive){archiveMedia(nextArchive).forEach(([key,item])=>{const f=mapping.get(item.file);if(f)linked[key]=bind(key,f);});}
+      else {next.videos.forEach((v,i)=>{const f=mapping.get(baseName(v));if(f)linked[`v${i}`]=bind(`v${i}`,f);});
+      next.events.filter(e=>e.type==='audio').forEach(e=>{const f=mapping.get(baseName(e));if(f)linked[e.id]=bind(e.id,f);});}
+      setArchive(nextArchive);setSources(linked);setModel(next);setName(jsons[0].webkitRelativePath?.split('/')[0]||jsons[0].name);setRevision(n=>n+1);setMessage('');
     }catch(error){setMessage(error.message);}
   }
   function choose(key,file){if(!file)return;setSources(previous=>({...previous,[key]:bind(key,file)}));setRevision(n=>n+1);setMessage('');}
-  function closeAnalysis(){loadId.current++;setModel(null);setSources({});clearUrls();return loadId.current;}
-  function openCloud(result,ticket){if(ticket!==loadId.current)return;loadId.current++;clearUrls();setModel(result.model);setSources(result.sources);setName(result.name);setRevision(n=>n+1);}
+  function closeAnalysis(){loadId.current++;setModel(null);setArchive(null);setSources({});clearUrls();return loadId.current;}
+  function openCloud(result,ticket){if(ticket!==loadId.current)return;loadId.current++;clearUrls();setArchive(result.archive||null);setModel(result.model||null);setSources(result.sources);setName(result.name);setRevision(n=>n+1);}
   const audioEvents=model?.events.filter(e=>e.type==='audio')||[];
   return <main>
-    <header><div className="brand"><span className="brand-mark">SC</span><div><strong>SLALOM COACH</strong><span>ANALYSE VIDÉO</span></div></div><div className="header-actions"><span className="local-badge">Fichiers locaux ou OneDrive</span><label className="button secondary">Ouvrir une analyse<input type="file" multiple accept=".json,video/*,audio/*" onChange={e=>{openFiles(e.target.files);e.target.value='';}}/></label></div></header>
-    <div className="page-title"><div><p className="eyebrow">ESPACE ATHLÈTE</p><h1>{model?'Revoir le passage':'Lire une analyse'}</h1><p>{model?`${name} · ${model.videos.length} angle${model.videos.length>1?'s':''}`:'Ouvre une analyse du coach pour retrouver ses dessins et ses commentaires au bon instant.'}</p></div>{model&&<button onClick={()=>{loadId.current++;setModel(null);setSources({});clearUrls();}}>Fermer</button>}</div>
+    <header><div className="brand"><span className="brand-mark">SC</span><div><strong>SLALOM COACH</strong><span>ANALYSE VIDÉO</span></div></div><div className="header-actions"><span className="local-badge">Fichiers locaux ou OneDrive</span><label className="button secondary">Ouvrir un dossier<input type="file" multiple accept=".json,video/*,audio/*,image/*" onChange={e=>{openFiles(e.target.files);e.target.value='';}}/></label></div></header>
+    <div className="page-title"><div><p className="eyebrow">ESPACE ATHLÈTE</p><h1>{archive?'Revoir la séance':model?'Revoir le passage':'Lire une analyse ou une archive'}</h1><p>{archive?name:model?`${name} · ${model.videos.length} angle${model.videos.length>1?'s':''}`:'Ouvre une analyse du coach pour retrouver ses dessins et ses commentaires au bon instant.'}</p></div>{(model||archive)&&<button onClick={closeAnalysis}>Fermer</button>}</div>
     {message&&<div className="message" role="alert"><span>{message}</span><button aria-label="Fermer le message" onClick={()=>setMessage('')}>×</button></div>}
     <OneDrivePanel onLoad={openCloud} onClear={closeAnalysis} onMessage={setMessage}/>
-    {!model?<section className="empty"><div className="empty-mark" aria-hidden="true">▶</div><h2>Ton analyse, dans le navigateur</h2><p>Sélectionne <strong>analyse.json</strong> et les médias exportés par l’application. Tu peux aussi associer chaque fichier après l’ouverture.</p><div className="buttons"><label className="button primary">Choisir les fichiers<input type="file" multiple accept=".json,video/*,audio/*" onChange={e=>{openFiles(e.target.files);e.target.value='';}}/></label><label className="button">Ouvrir un dossier<input type="file" webkitdirectory="" multiple onChange={e=>{openFiles(e.target.files);e.target.value='';}}/></label></div><p className="hint">Les fichiers restent sur ton appareil. Aucun compte nécessaire pour ce test.</p></section>:<>
+    {archive?<ArchiveViewer key={revision} archive={archive} sources={sources} onMessage={setMessage}/>:!model?<section className="empty"><div className="empty-mark" aria-hidden="true">▶</div><h2>Ton analyse, dans le navigateur</h2><p>Sélectionne <strong>archive.json</strong> ou <strong>analyse.json</strong> et les médias exportés par l’application. Tu peux aussi associer chaque fichier après l’ouverture.</p><div className="buttons"><label className="button primary">Choisir les fichiers<input type="file" multiple accept=".json,video/*,audio/*,image/*" onChange={e=>{openFiles(e.target.files);e.target.value='';}}/></label><label className="button">Ouvrir un dossier<input type="file" webkitdirectory="" multiple onChange={e=>{openFiles(e.target.files);e.target.value='';}}/></label></div><p className="hint">Les fichiers restent sur ton appareil. Aucun compte nécessaire pour ce test.</p></section>:<>
       <Player key={revision} model={model} sources={sources} onMessage={setMessage}/>
       <details className="media" open={!model.videos.every((_,i)=>sources[`v${i}`])}><summary>Fichiers de l’analyse <span>{Object.keys(sources).length} associé(s)</span></summary><div className="media-grid">{model.videos.map((v,i)=><label className="media-item" key={i}><strong>Vidéo {i+1}{i===0?' · Maître':''}</strong><span>{baseName(v)}</span><span className={sources[`v${i}`]?'ready':'missing'}>{sources[`v${i}`]?'Fichier associé':'Fichier à sélectionner'}</span><input aria-label={`Fichier vidéo ${i+1}`} type="file" accept="video/*" onChange={e=>choose(`v${i}`,e.target.files[0])}/></label>)}{audioEvents.map(e=><label className="media-item" key={e.id}><strong>Note · {formatTime(e.time)}</strong><span>{baseName(e)}</span><span className={sources[e.id]?'ready':'missing'}>{sources[e.id]?'Fichier associé':'Fichier à sélectionner'}</span><input aria-label={`Note ${formatTime(e.time)}`} type="file" accept="audio/*,video/mp4" onChange={event=>choose(e.id,event.target.files[0])}/></label>)}</div></details>
     </>}
@@ -169,3 +175,4 @@ function App(){
   </main>;
 }
 createRoot(document.getElementById('root')).render(<App/>);
+

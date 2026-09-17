@@ -9,7 +9,7 @@ export default function OneDrivePanel({onLoad,onClear,onMessage}){
   async function login(){onClear();setBusy(true);try{const next=await connect();if(alive.current)setAccount(next);}catch(e){if(alive.current)onMessage(e.errorCode==='user_cancelled'?'Connexion annulée.':`Connexion Microsoft : ${e.message}`);}finally{if(alive.current)setBusy(false);}}
   async function open(){
     request.current?.abort();const controller=new AbortController();request.current=controller;setBusy(true);const ticket=onClear();
-    try{const result=await loadAnalysis(link,{signal:controller.signal,getToken:accessToken});if(alive.current&&!controller.signal.aborted){onLoad(result,ticket);onMessage('Analyse OneDrive chargée. Si un média cesse de répondre, clique sur « Ouvrir / actualiser » pour renouveler les liens (la lecture repartira au début).');}}
+    try{const result=await loadAnalysis(link,{signal:controller.signal,getToken:accessToken});if(alive.current&&!controller.signal.aborted){onLoad(result,ticket);onMessage('Dossier OneDrive chargé. Si un média cesse de répondre, clique sur « Ouvrir / actualiser » pour renouveler les liens (la lecture repartira au début).');}}
     catch(e){if(alive.current&&e.name!=='AbortError')onMessage(e.message);}
     finally{if(alive.current)setBusy(false);}
   }
@@ -24,5 +24,6 @@ export default function OneDrivePanel({onLoad,onClear,onMessage}){
     catch{onMessage('Déconnexion incomplète. Ferme cet onglet si nécessaire.');}
     finally{if(alive.current)setBusy(false);}
   }
-  return <section className="onedrive" aria-label="OneDrive"><h2>Ouvrir depuis OneDrive</h2><p>Le coach partage un dossier contenant analyse.json, les vidéos et les notes vocales.</p><div className="buttons"><button onClick={login} disabled={!initialized||busy}>{account?'Changer / reconnecter Microsoft':'Connecter Microsoft'}</button>{account&&<><span>{account.username}</span><button onClick={logout} disabled={busy}>Déconnexion</button></>}</div><label>Lien de partage du dossier<input type="url" value={link} onChange={e=>setLink(e.target.value)} placeholder="https://1drv.ms/f/…" disabled={busy}/></label><div className="buttons"><button className="primary" onClick={open} disabled={!account||!link.trim()||busy}>{busy?'Opération en cours…':'Ouvrir / actualiser'}</button><button onClick={share} disabled={!link.trim()||busy}>Copier le lien du portail</button></div></section>;
+  return <section className="onedrive" aria-label="OneDrive"><h2>Ouvrir depuis OneDrive</h2><p>Le coach partage un dossier contenant archive.json ou analyse.json, accompagné de ses médias.</p><div className="buttons"><button onClick={login} disabled={!initialized||busy}>{account?'Changer / reconnecter Microsoft':'Connecter Microsoft'}</button>{account&&<><span>{account.username}</span><button onClick={logout} disabled={busy}>Déconnexion</button></>}</div><label>Lien de partage du dossier<input type="url" value={link} onChange={e=>setLink(e.target.value)} placeholder="https://1drv.ms/f/…" disabled={busy}/></label><div className="buttons"><button className="primary" onClick={open} disabled={!account||!link.trim()||busy}>{busy?'Opération en cours…':'Ouvrir / actualiser'}</button><button onClick={share} disabled={!link.trim()||busy}>Copier le lien du portail</button></div></section>;
 }
+

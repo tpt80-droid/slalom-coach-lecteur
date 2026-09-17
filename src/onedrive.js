@@ -1,3 +1,4 @@
+import {validateArchive,archiveMedia} from './archive.js';
 import {validate,baseName} from './timeline.js';
 export function sharingToken(value){
   const url=new URL(value.trim());
@@ -25,7 +26,7 @@ export async function loadAnalysis(link,{signal,fetcher=fetch,getToken}={}){
     return response.json();
   }
   const folder=await graph(endpoint);
-  if(!folder.folder)throw new Error('Le lien doit désigner un dossier contenant analyse.json et les médias.');
+  if(!folder.folder)throw new Error('Le lien doit désigner un dossier contenant archive.json ou analyse.json et les médias.');
   const files=[];let next=endpoint+'/children';const visited=new Set();
   while(next){
     if(visited.has(next)||visited.size>=100)throw new Error('Dossier trop volumineux ou pagination invalide.');
@@ -33,8 +34,8 @@ export async function loadAnalysis(link,{signal,fetcher=fetch,getToken}={}){
     if(!Array.isArray(page.value))throw new Error('Liste de fichiers OneDrive invalide.');
     files.push(...page.value.filter(item=>item.file));next=page['@odata.nextLink'];
   }
-  const jsons=files.filter(item=>item.name.toLowerCase()==='analyse.json');
-  if(jsons.length!==1)throw new Error('Le dossier doit contenir exactement un fichier analyse.json.');
+  const jsons=files.filter(item=>['analyse.json','archive.json'].includes(item.name.toLowerCase()));
+  if(jsons.length!==1)throw new Error('Le dossier doit contenir exactement un manifeste : archive.json ou analyse.json.');
   async function download(item){
     if(item['@microsoft.graph.downloadUrl'])return safeDownload(item['@microsoft.graph.downloadUrl']);
     const drive=item.parentReference?.driveId||folder.parentReference?.driveId;
@@ -49,8 +50,10 @@ export async function loadAnalysis(link,{signal,fetcher=fetch,getToken}={}){
   const reader=response.body.getReader();const chunks=[];let size=0;
   while(true){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;if(size>10*1024*1024){await reader.cancel();throw new Error('Le JSON dépasse 10 Mo.');}chunks.push(value);}
   const bytes=new Uint8Array(size);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length;}
-  const model=validate(JSON.parse(new TextDecoder().decode(bytes))),sources={};
-  const media=[...model.videos.map((v,i)=>[`v${i}`,v]),...model.events.filter(e=>e.type==='audio').map(e=>[e.id,e])];
+  const raw=JSON.parse(new TextDecoder().decode(bytes));
+  const archive=raw.documentType==='archive'?validateArchive(raw):null;
+  const model=archive?null:validate(raw),sources={};
+  const media=archive?archiveMedia(archive):[...model.videos.map((v,i)=>[`v${i}`,v]),...model.events.filter(e=>e.type==='audio').map(e=>[e.id,e])];
   const cache=new Map();
   for(const [key,item] of media){
     const name=baseName(item),matches=files.filter(file=>file.name===name);
@@ -58,5 +61,6 @@ export async function loadAnalysis(link,{signal,fetcher=fetch,getToken}={}){
     if(!cache.has(name))cache.set(name,await download(matches[0]));
     sources[key]=cache.get(name);
   }
-  return {model,sources,name:folder.name||'Analyse OneDrive'};
+  return {model,archive,sources,name:archive?.collection.name||folder.name||'Analyse OneDrive'};
 }
+
