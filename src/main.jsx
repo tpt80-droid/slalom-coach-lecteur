@@ -25,6 +25,7 @@ function Player({model,sources,onMessage}) {
   const [time,setTime]=useState(0),[duration,setDuration]=useState(0),[playing,setPlaying]=useState(false),[rate,setRate]=useState(1),[showDrawings,setShowDrawings]=useState(true),[notes,setNotes]=useState(true);
   const current=useRef({time:0,run:false,rate:1,notes:true});
   const alive=useRef(true),audioKey=useRef(null),audioBlocked=useRef(false),playGeneration=useRef(0);
+  const previousTime=useRef(0),triggered=useRef(new Set());
   current.current.rate=rate;current.current.notes=notes;
   const available=model.videos.every((_,i)=>sources[`v${i}`]);
   const drawings=visibleEvents(model.events,time);
@@ -47,7 +48,32 @@ function Player({model,sources,onMessage}) {
       });
     }else if(!run||elapsed>=limit)a.pause();
   }
+  function playTriggeredAudio(event){
+    const a=audioRef.current,src=sources[event.id];
+    if(!a||!src)return;
+    const key=`${event.id}:${src}`;
+    audioBlocked.current=false;
+    audioKey.current=key;
+    a.src=src;
+    a.load();
+    a.currentTime=0;
+    a.play().catch(error=>{
+      if(error.name!=='AbortError')onMessage('Le navigateur a bloqué la note vocale. Relance la lecture ou autorise le son.');
+    });
+  }
   function sync(ms,run,force=false){
+    const crossed=run&&ms>=previousTime.current
+      ?model.events.filter(event=>previousTime.current<event.time&&event.time<=ms&&!triggered.current.has(event.id))
+      :[];
+    if(ms<previousTime.current){
+      triggered.current.clear();
+    }
+    previousTime.current=ms;
+    if(crossed.length){
+      crossed.forEach(event=>triggered.current.add(event.id));
+      refs.current.forEach(video=>video?.pause());
+      run=false;
+    }
     current.current.time=ms;current.current.run=run;setTime(ms);setPlaying(run);
     refs.current.slice(1).forEach((v,index)=>{
       if(!v||v.readyState<1)return;
@@ -59,6 +85,10 @@ function Player({model,sources,onMessage}) {
       else v.pause();
     });
     syncAudio(ms,run);
+    if(crossed.length){
+      const audioEvent=crossed.find(event=>event.type==='audio');
+      if(audioEvent)playTriggeredAudio(audioEvent);
+    }
   }
   // Seul le lecteur maître fournit le temps. Aucune horloge autonome.
   const syncRef=useRef(sync);syncRef.current=sync;
@@ -76,22 +106,26 @@ function Player({model,sources,onMessage}) {
       syncRef.current(metadata.mediaTime*1000,!master.paused&&!master.seeking&&master.readyState>=3&&!master.ended);
       frameRef.current=master.requestVideoFrameCallback(frame);
     };
+    const fallbackRead=()=>{
+      const at=master.currentTime*1000;
+      syncRef.current(at,!master.paused&&!master.seeking&&master.readyState>=3&&!master.ended);
+    };
     const events=['loadedmetadata','seeked','pause','playing','ended','durationchange'];
     events.forEach(name=>master.addEventListener(name,read));
     master.addEventListener('waiting',freeze);master.addEventListener('seeking',freeze);
     if(master.requestVideoFrameCallback)frameRef.current=master.requestVideoFrameCallback(frame);
-    else master.addEventListener('timeupdate',read);
+    else master.addEventListener('timeupdate',fallbackRead);
     const hidden=()=>{if(document.hidden){master.pause();freeze();}};
     document.addEventListener('visibilitychange',hidden);
     return()=>{
       alive.current=false;playGeneration.current++;
       if(frameRef.current!==null&&master.cancelVideoFrameCallback)master.cancelVideoFrameCallback(frameRef.current);
-      events.forEach(name=>master.removeEventListener(name,read));master.removeEventListener('waiting',freeze);master.removeEventListener('seeking',freeze);master.removeEventListener('timeupdate',read);document.removeEventListener('visibilitychange',hidden);
+      events.forEach(name=>master.removeEventListener(name,read));master.removeEventListener('waiting',freeze);master.removeEventListener('seeking',freeze);master.removeEventListener('timeupdate',fallbackRead);document.removeEventListener('visibilitychange',hidden);
       refs.current.forEach(v=>v?.pause());audioRef.current?.pause();
     };
   },[]);
   useEffect(()=>{refs.current.forEach(v=>{if(v)v.playbackRate=rate;});syncAudio(current.current.time,current.current.run);},[rate,notes]);
-  function seek(ms){pause();const m=refs.current[0];if(m&&m.readyState>=1)m.currentTime=Math.max(0,Math.min(ms,duration))/1000;}
+  function seek(ms){pause();const target=Math.max(0,Math.min(ms,duration));previousTime.current=target;triggered.current.clear();const m=refs.current[0];if(m&&m.readyState>=1)m.currentTime=target/1000;}
   async function toggle(){
     const m=refs.current[0];if(!m||!available)return;
     if(!m.paused){pause();return;}
@@ -128,7 +162,7 @@ function Player({model,sources,onMessage}) {
         <div className="buttons"><button className="primary" onClick={toggle} disabled={!available}>{playing?'Ⅱ Pause':'▶ Lecture'}</button><button onClick={()=>seek(time-1000)} disabled={!duration}>−1 s</button><button onClick={()=>seek(time+1000)} disabled={!duration}>+1 s</button><label className="speed">Vitesse <select aria-label="Vitesse" value={rate} onChange={e=>setRate(Number(e.target.value))}>{[.25,.5,1,1.5,2].map(r=><option key={r} value={r}>×{r}</option>)}</select></label><button onClick={()=>containerRef.current?.parentElement?.requestFullscreen?.().catch(()=>onMessage('Le plein écran n’est pas disponible dans ce navigateur.'))}>Plein écran</button></div>
         <div className="toggles"><label><input type="checkbox" checked={showDrawings} onChange={e=>setShowDrawings(e.target.checked)}/> Dessins</label><label><input type="checkbox" checked={notes} onChange={e=>{audioBlocked.current=false;setNotes(e.target.checked);}}/> Notes vocales</label><span>Les annotations suivent le temps vidéo.</span></div>
       </div>
-      <audio ref={audioRef} preload="metadata" onLoadedMetadata={()=>syncAudio(current.current.time,current.current.run)} onError={()=>onMessage('Une note vocale ne peut pas être décodée. Choisis le fichier audio correspondant.')}/>
+      <audio ref={audioRef} preload="metadata" onLoadedMetadata={()=>syncAudio(current.current.time,current.current.run)} onEnded={()=>{audioBlocked.current=true;audioRef.current?.pause();}} onError={()=>onMessage('Une note vocale ne peut pas être décodée. Choisis le fichier audio correspondant.')}/>
     </section>
     <aside className="events"><div className="section-title"><h2>Annotations</h2><span>{model.events.length}</span></div><p className="hint">Choisis un événement pour retrouver son instant.</p><ol>{model.events.map((e,i)=><li key={e.id}><button data-index={i} onClick={selection} className={drawings.includes(e)?'event active':'event'}><span className="event-time">{formatTime(e.time)}</span><span className="event-name">{TYPES[e.type]}{e.type==='text'&&<small>{e.data.text}</small>}</span><span className="event-duration">{e.duration?`${e.duration/1000} s`:'—'}</span></button></li>)}</ol>{!model.events.length&&<p className="hint">Cette analyse ne contient pas encore d’annotation.</p>}</aside>
   </div>;
@@ -175,4 +209,3 @@ function App(){
   </main>;
 }
 createRoot(document.getElementById('root')).render(<App/>);
-

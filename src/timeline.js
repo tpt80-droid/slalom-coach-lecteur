@@ -26,8 +26,9 @@ export function validate(raw) {
       if (e.duration!==undefined && (!finite(e.duration) || e.duration<=0)) fail('durée audio.');
       return {...base,uri:e.uri || e.url || '',file:e.file || '',...(e.duration!==undefined?{duration:e.duration}:{})};
     }
-    const duration=e.duration??3000, d=e.data;
-    if (!finite(duration) || duration<=0 || !d || typeof d.color!=='string' || !/^(#[\da-f]{3,8}|[a-z]{1,24})$/i.test(d.color)) fail('durée/couleur du dessin.');
+    const duration=e.duration, d=e.data;
+    if (duration!==undefined && (!finite(duration) || duration<=0)) fail('durée du dessin.');
+    if (!d || typeof d.color!=='string' || !/^(#[\da-f]{3,8}|[a-z]{1,24})$/i.test(d.color)) fail('couleur du dessin.');
     if (d.strokeWidth!==undefined && (!unit(d.strokeWidth)||d.strokeWidth===0)) fail('épaisseur.');
     if (e.type==='path') {
       if (!Array.isArray(d.points)||!d.points.length||!d.points.every(point)) fail('coordonnées du tracé.');
@@ -35,14 +36,16 @@ export function validate(raw) {
     } else if(e.type==='text') {
       if(!point(d)||typeof d.text!=='string'||d.text.length>2000||(d.fontSize!==undefined&&(!unit(d.fontSize)||d.fontSize===0)))fail('texte.');
     } else if(!point(d.p1)||!point(d.p2))fail('coordonnées du dessin.');
-    return {...base,duration,data:d};
+    return {...base,...(duration!==undefined?{duration}:{}),data:d};
   }).sort((a,b)=>a.time-b.time); // Stable : ordre des événements à temps égal conservé.
   return {schemaVersion:1,canvasAspectRatio:ratio,coordinateSpace:'normalized',layout:'grid',contentFit:'contain',syncOffsets:[...raw.syncOffsets],videos,events};
 }
 export function visibleEvents(events,time) {
   let clearTime=-Infinity,clearIndex=-1;
   events.forEach((e,i)=>{if(e.type==='clear_all'&&e.time<=time&&(e.time>clearTime||(e.time===clearTime&&i>clearIndex))){clearTime=e.time;clearIndex=i;}});
-  return events.filter((e,i)=>e.type!=='clear_all'&&e.type!=='audio'&&e.time<=time&&time<=e.time+e.duration&&(e.time>clearTime||(e.time===clearTime&&i>clearIndex)));
+  return events.filter((e,i)=>e.type!=='clear_all'&&e.type!=='audio'&&e.time<=time&&
+    (e.duration===undefined||time<=e.time+e.duration)&&
+    (e.time>clearTime||(e.time===clearTime&&i>clearIndex)));
 }
 export function activeAudio(events,time) {
   let event=null;

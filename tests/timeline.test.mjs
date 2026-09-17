@@ -1,9 +1,10 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {validate,visibleEvents,activeAudio,followerTarget} from '../src/timeline.js';
-const path=(time,duration=3000)=>({type:'path',time,duration,data:{color:'red',points:[{x:.5,y:.5}]}});
+const path=(time,duration)=>({type:'path',time,...(duration===undefined?{}:{duration}),data:{color:'red',points:[{x:.5,y:.5}]}});
 const raw={syncOffsets:[0,1200,-500,0],videos:[{uri:'file://a.mp4'}],events:[]};
-test('bornes inclusives et retour arrière',()=>{const e=[path(1000)];assert.equal(visibleEvents(e,999).length,0);assert.equal(visibleEvents(e,1000).length,1);assert.equal(visibleEvents(e,4000).length,1);assert.equal(visibleEvents(e,4001).length,0);assert.equal(visibleEvents(e,2000).length,1);});
+test('bornes inclusives et retour arrière',()=>{const e=[path(1000,3000)];assert.equal(visibleEvents(e,999).length,0);assert.equal(visibleEvents(e,1000).length,1);assert.equal(visibleEvents(e,4000).length,1);assert.equal(visibleEvents(e,4001).length,0);assert.equal(visibleEvents(e,2000).length,1);});
+test('un dessin sans durée reste visible',()=>{const m=validate({...raw,events:[path(1000)]});assert.equal(visibleEvents(m.events,60000).length,1);});
 test('gomme et ordre stable à temps égal',()=>{const e=[path(1000),{type:'clear_all',time:2000},path(2000)];const model=validate({...raw,events:e});assert.equal(visibleEvents(model.events,2000).length,1);assert.equal(visibleEvents(model.events,1500).length,1);assert.equal(visibleEvents([...e,{type:'clear_all',time:2000}],2000).length,0);});
 test('notes avec uri et anciens url, dernière note prioritaire',()=>{const m=validate({...raw,events:[{type:'audio',time:500,uri:'file://a',duration:5000},{type:'audio',time:1000,url:'file://b',duration:100}]});assert.equal(activeAudio(m.events,1000).uri,'file://b');assert.equal(activeAudio(m.events,1200),null);assert.equal(activeAudio(m.events,600).uri,'file://a');});
 test('offsets et limites du média',()=>{assert.deepEqual(followerTarget(1000,1200,10),{time:2.2,inRange:true});assert.deepEqual(followerTarget(1000,-1200,10),{time:0,inRange:false});assert.deepEqual(followerTarget(9000,1200,10),{time:10,inRange:false});});
