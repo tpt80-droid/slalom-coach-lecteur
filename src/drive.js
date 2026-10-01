@@ -18,7 +18,9 @@ async function msFetch(path, options = {}) {
   });
   if (!res.ok) {
     const b = await res.json().catch(() => ({}));
-    throw new Error(`OneDrive : ${b.error?.message || `HTTP ${res.status}`}`);
+    const err = new Error(`OneDrive : ${b.error?.message || `HTTP ${res.status}`}`);
+    err.status = res.status;
+    throw err;
   }
   return res;
 }
@@ -58,4 +60,94 @@ export async function ensureAppFolder(provider) {
     return (await create.json()).id;
   }
   throw new Error('Provider inconnu.');
+}
+
+
+// ============================================================
+// Lecture / écriture de fichiers dans le dossier app
+// ============================================================
+
+const folderIdCache = { microsoft: null, google: null };
+
+async function getFolderId(provider) {
+  if (folderIdCache[provider]) return folderIdCache[provider];
+  const id = await ensureAppFolder(provider);
+  folderIdCache[provider] = id;
+  return id;
+}
+
+export async function readAppFile(provider, filename) {
+  const folderId = await getFolderId(provider);
+  if (provider === 'microsoft') {
+    const res = await msFetch(
+      `/me/drive/items/${encodeURIComponent(folderId)}:/${encodeURIComponent(filename)}:/content`
+    );
+    return res.text();
+  }
+  if (provider === 'google') {
+    const q = encodeURIComponent(`name='${filename}' and '${folderId}' in parents and trashed=false`);
+    const search = await gFetch(`/files?q=${q}&fields=files(id,name)`);
+    const found = await search.json();
+    if (!found.files?.length) throw new Error('__NOT_FOUND__');
+    const res = await gFetch(`/files/${found.files[0].id}?alt=media`);
+    return res.text();
+  }
+  throw new Error('Provider inconnu.');
+}
+
+export async function writeAppFile(provider, filename, content) {
+  const folderId = await getFolderId(provider);
+  if (provider === 'microsoft') {
+    // PUT /content met à jour si existe, crée sinon
+    await msFetch(
+      `/me/drive/items/${encodeURIComponent(folderId)}:/${encodeURIComponent(filename)}:/content`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: content,
+      }
+    );
+    return;
+  }
+  if (provider === 'google') {
+    const q = encodeURIComponent(`name='${filename}' and '${folderId}' in parents and trashed=false`);
+    const search = await gFetch(`/files?q=${q}&fields=files(id,name)`);
+    const found = await search.json();
+    if (found.files?.length) {
+      await gFetch(
+        `https://www.googleapis.com/upload/drive/v3/files/${found.files[0].id}?uploadType=media`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: content,
+        }
+      );
+    } else {
+      const boundary = '----scp' + Date.now();
+      const metadata = { name: filename, parents: [folderId] };
+      const body =
+        `--${boundary}\r\n` +
+        `Content-Type: application/json; charset=UTF-8\r\n\r\n` +
+        JSON.stringify(metadata) + `\r\n` +
+        `--${boundary}\r\n` +
+        `Content-Type: application/json\r\n\r\n` +
+        content + `\r\n` +
+        `--${boundary}--`;
+      await gFetch(
+        'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': `multipart/related; boundary=${boundary}` },
+          body,
+        }
+      );
+    }
+    return;
+  }
+  throw new Error('Provider inconnu.');
+}
+
+export function resetFolderCache() {
+  folderIdCache.microsoft = null;
+  folderIdCache.google = null;
 }

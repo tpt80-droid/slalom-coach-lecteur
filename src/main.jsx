@@ -6,6 +6,10 @@ import { validate, visibleEvents, activeAudio, followerTarget, baseName, formatT
 import './style.css';
 import OneDrivePanel from './OneDrivePanel.jsx';
 import SpacePanel from './SpacePanel.jsx';
+import LibraryPanel from './LibraryPanel.jsx';
+import * as library from './library.js';
+import * as msAuth from './microsoftAuth.js';
+import * as gAuth from './googleAuth.js';
 
 function Drawing({ event, ratio }) {
   const d = event.data, w = 1000, h = w / ratio, u = Math.min(w, h);
@@ -185,6 +189,41 @@ function Player({ model, sources, onMessage }) {
 
 function App() {
   const [archive, setArchive] = useState(null);
+  const [headerView, setHeaderView] = useState('reader');
+  const [session, setSession] = useState({ provider: null, account: null });
+  const [sessionTick, setSessionTick] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try { await msAuth.ready; } catch { }
+      if (cancelled) return;
+      const preferred = localStorage.getItem('scp.activeProvider');
+      const msAcc = msAuth.msal?.getActiveAccount?.();
+      const gAcc = gAuth.getAccount?.();
+      const pick = (p) => {
+        if (p === 'microsoft' && msAcc) {
+          setSession({ provider: 'microsoft', account: { email: msAcc.username, name: msAcc.name } });
+          return true;
+        }
+        if (p === 'google' && gAcc) {
+          setSession({ provider: 'google', account: { email: gAcc.email, name: gAcc.name } });
+          return true;
+        }
+        return false;
+      };
+      if (pick(preferred)) return;
+      if (pick('microsoft')) return;
+      if (pick('google')) return;
+      setSession({ provider: null, account: null });
+    })();
+    return () => { cancelled = true; };
+  }, [sessionTick]);
+
+  const switchTab = (v) => {
+    setHeaderView(v);
+    setSessionTick(x => x + 1);
+  };
   const [model, setModel] = useState(null), [sources, setSources] = useState({}), [name, setName] = useState(''), [message, setMessage] = useState(''), [revision, setRevision] = useState(0);
   const urls = useRef(new Map()), loadId = useRef(0);
   function clearUrls() { urls.current.forEach(url => URL.revokeObjectURL(url)); urls.current.clear(); }
@@ -214,15 +253,29 @@ function App() {
   function openCloud(result, ticket) { if (ticket !== loadId.current) return; loadId.current++; clearUrls(); setArchive(result.archive || null); setModel(result.model || null); setSources(result.sources); setName(result.name); setRevision(n => n + 1); }
   const audioEvents = model?.events.filter(e => e.type === 'audio') || [];
   return <main>
-    <header><div className="brand"><span className="brand-mark">SC</span><div><strong>SLALOM COACH</strong><span>ANALYSE VIDÉO</span></div></div><div className="header-actions"><span className="local-badge">Fichiers locaux ou OneDrive</span><label className="button secondary">Ouvrir un dossier<input type="file" multiple accept=".json,video/*,audio/*,image/*" onChange={e => { openFiles(e.target.files); e.target.value = ''; }} /></label></div></header>
+    <header><div className="brand"><span className="brand-mark">SC</span><div><strong>SLALOM COACH</strong><span>ANALYSE VIDÉO</span></div></div><nav className="header-tabs">
+      <button className={headerView === 'reader' ? 'active' : ''} onClick={() => switchTab('reader')}>📖 Lecteur</button>
+      <button className={headerView === 'library' ? 'active' : ''} onClick={() => switchTab('library')}>📚 Ma bibliothèque</button>
+    </nav><div className="header-actions"><span className="local-badge">Fichiers locaux ou OneDrive</span><label className="button secondary">Ouvrir un dossier<input type="file" multiple accept=".json,video/*,audio/*,image/*" onChange={e => { openFiles(e.target.files); e.target.value = ''; }} /></label></div></header>
     <div className="page-title"><div><p className="eyebrow">ESPACE ATHLÈTE</p><h1>{archive ? 'Revoir la séance' : model ? 'Revoir le passage' : 'Lire une analyse ou une archive'}</h1><p>{archive ? name : model ? `${name} · ${model.videos.length} angle${model.videos.length > 1 ? 's' : ''}` : 'Ouvre une analyse du coach pour retrouver ses dessins et ses commentaires au bon instant.'}</p></div>{(model || archive) && <button onClick={closeAnalysis}>Fermer</button>}</div>
     {message && <div className="message" role="alert"><span>{message}</span><button aria-label="Fermer le message" onClick={() => setMessage('')}>×</button></div>}
     <SpacePanel onMessage={setMessage} />
     <OneDrivePanel onLoad={openCloud} onClear={closeAnalysis} onMessage={setMessage} />
-    {archive ? <ArchiveViewer key={revision} archive={archive} sources={sources} onMessage={setMessage} /> : !model ? <section className="empty"><div className="empty-mark" aria-hidden="true">▶</div><h2>Ton analyse, dans le navigateur</h2><p>Sélectionne <strong>archive.json</strong> ou <strong>analyse.json</strong> et les médias exportés par l’application. Tu peux aussi associer chaque fichier après l’ouverture.</p><div className="buttons"><label className="button primary">Choisir les fichiers<input type="file" multiple accept=".json,video/*,audio/*,image/*" onChange={e => { openFiles(e.target.files); e.target.value = ''; }} /></label><label className="button">Ouvrir un dossier<input type="file" webkitdirectory="" multiple onChange={e => { openFiles(e.target.files); e.target.value = ''; }} /></label></div><p className="hint">Les fichiers restent sur ton appareil. Aucun compte nécessaire pour ce test.</p></section> : <>
-      <Player key={revision} model={model} sources={sources} onMessage={setMessage} />
-      <details className="media" open={!model.videos.every((_, i) => sources[`v${i}`])}><summary>Fichiers de l’analyse <span>{Object.keys(sources).length} associé(s)</span></summary><div className="media-grid">{model.videos.map((v, i) => <label className="media-item" key={i}><strong>Vidéo {i + 1}{i === 0 ? ' · Maître' : ''}</strong><span>{baseName(v)}</span><span className={sources[`v${i}`] ? 'ready' : 'missing'}>{sources[`v${i}`] ? 'Fichier associé' : 'Fichier à sélectionner'}</span><input aria-label={`Fichier vidéo ${i + 1}`} type="file" accept="video/*" onChange={e => choose(`v${i}`, e.target.files[0])} /></label>)}{audioEvents.map(e => <label className="media-item" key={e.id}><strong>Note · {formatTime(e.time)}</strong><span>{baseName(e)}</span><span className={sources[e.id] ? 'ready' : 'missing'}>{sources[e.id] ? 'Fichier associé' : 'Fichier à sélectionner'}</span><input aria-label={`Note ${formatTime(e.time)}`} type="file" accept="audio/*,video/mp4" onChange={event => choose(e.id, event.target.files[0])} /></label>)}</div></details>
-    </>}
+    {headerView === 'library' ? (
+      <LibraryPanel
+        provider={session.provider}
+        account={session.account}
+        onOpen={(a) => { library.markViewed(a.id); setMessage(`Analyse « ${a.name} » — ouvre-la avec son lien de partage.`); switchTab('reader'); }}
+        onMessage={setMessage}
+      />
+    ) : (
+      <>
+        {archive ? <ArchiveViewer key={revision} archive={archive} sources={sources} onMessage={setMessage} /> : !model ? <section className="empty"><div className="empty-mark" aria-hidden="true">▶</div><h2>Ton analyse, dans le navigateur</h2><p>Sélectionne <strong>archive.json</strong> ou <strong>analyse.json</strong> et les médias exportés par l’application. Tu peux aussi associer chaque fichier après l’ouverture.</p><div className="buttons"><label className="button primary">Choisir les fichiers<input type="file" multiple accept=".json,video/*,audio/*,image/*" onChange={e => { openFiles(e.target.files); e.target.value = ''; }} /></label><label className="button">Ouvrir un dossier<input type="file" webkitdirectory="" multiple onChange={e => { openFiles(e.target.files); e.target.value = ''; }} /></label></div><p className="hint">Les fichiers restent sur ton appareil. Aucun compte nécessaire pour ce test.</p></section> : <>
+          <Player key={revision} model={model} sources={sources} onMessage={setMessage} />
+          <details className="media" open={!model.videos.every((_, i) => sources[`v${i}`])}><summary>Fichiers de l’analyse <span>{Object.keys(sources).length} associé(s)</span></summary><div className="media-grid">{model.videos.map((v, i) => <label className="media-item" key={i}><strong>Vidéo {i + 1}{i === 0 ? ' · Maître' : ''}</strong><span>{baseName(v)}</span><span className={sources[`v${i}`] ? 'ready' : 'missing'}>{sources[`v${i}`] ? 'Fichier associé' : 'Fichier à sélectionner'}</span><input aria-label={`Fichier vidéo ${i + 1}`} type="file" accept="video/*" onChange={e => choose(`v${i}`, e.target.files[0])} /></label>)}{audioEvents.map(e => <label className="media-item" key={e.id}><strong>Note · {formatTime(e.time)}</strong><span>{baseName(e)}</span><span className={sources[e.id] ? 'ready' : 'missing'}>{sources[e.id] ? 'Fichier associé' : 'Fichier à sélectionner'}</span><input aria-label={`Note ${formatTime(e.time)}`} type="file" accept="audio/*,video/mp4" onChange={event => choose(e.id, event.target.files[0])} /></label>)}</div></details>
+        </>}
+      </>
+    )}
     <footer><span>SLALOM COACH PRO</span><span>Portail de lecture · OneDrive</span></footer>
   </main>;
 }

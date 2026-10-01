@@ -3,6 +3,8 @@ import * as msAuth from './microsoftAuth.js';
 import * as gAuth from './googleAuth.js';
 import { ensureAppFolder } from './drive.js';
 
+const PROVIDER_KEY = 'scp.activeProvider';
+
 export default function SpacePanel({ onMessage }) {
   const [msAccount, setMsAccount] = useState(null);
   const [gAccount, setGAccount] = useState(null);
@@ -18,12 +20,20 @@ export default function SpacePanel({ onMessage }) {
 
   const connectMs = async () => {
     setBusy(true);
-    try { setMsAccount(await msAuth.connect()); onMessage('Compte Microsoft connecté.'); }
+    try {
+      setMsAccount(await msAuth.connect());
+      localStorage.setItem(PROVIDER_KEY, 'microsoft');
+      onMessage('Compte Microsoft connecté.');
+    }
     catch (e) { onMessage(e.message); } finally { setBusy(false); }
   };
   const connectG = async () => {
     setBusy(true);
-    try { setGAccount(await gAuth.connect()); onMessage('Compte Google connecté.'); }
+    try {
+      setGAccount(await gAuth.connect());
+      localStorage.setItem(PROVIDER_KEY, 'google');
+      onMessage('Compte Google connecté.');
+    }
     catch (e) { onMessage(e.message); } finally { setBusy(false); }
   };
   const logout = async (p) => {
@@ -36,6 +46,7 @@ export default function SpacePanel({ onMessage }) {
     try {
       const id = await ensureAppFolder(p);
       setFolders(prev => ({ ...prev, [p]: id }));
+      localStorage.setItem(PROVIDER_KEY, p);
       onMessage(`Dossier ${p === 'microsoft' ? 'OneDrive' : 'Google Drive'} prêt.`);
     } catch (e) { onMessage(e.message); } finally { setBusy(false); }
   };
