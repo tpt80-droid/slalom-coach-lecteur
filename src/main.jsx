@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client';
 import { validate, visibleEvents, activeAudio, followerTarget, baseName, formatTime, TYPES } from './timeline.js';
 import './style.css';
 import OneDrivePanel from './OneDrivePanel.jsx';
+import SpacePanel from './SpacePanel.jsx';
 
 function Drawing({ event, ratio }) {
   const d = event.data, w = 1000, h = w / ratio, u = Math.min(w, h);
@@ -216,6 +217,7 @@ function App() {
     <header><div className="brand"><span className="brand-mark">SC</span><div><strong>SLALOM COACH</strong><span>ANALYSE VIDÉO</span></div></div><div className="header-actions"><span className="local-badge">Fichiers locaux ou OneDrive</span><label className="button secondary">Ouvrir un dossier<input type="file" multiple accept=".json,video/*,audio/*,image/*" onChange={e => { openFiles(e.target.files); e.target.value = ''; }} /></label></div></header>
     <div className="page-title"><div><p className="eyebrow">ESPACE ATHLÈTE</p><h1>{archive ? 'Revoir la séance' : model ? 'Revoir le passage' : 'Lire une analyse ou une archive'}</h1><p>{archive ? name : model ? `${name} · ${model.videos.length} angle${model.videos.length > 1 ? 's' : ''}` : 'Ouvre une analyse du coach pour retrouver ses dessins et ses commentaires au bon instant.'}</p></div>{(model || archive) && <button onClick={closeAnalysis}>Fermer</button>}</div>
     {message && <div className="message" role="alert"><span>{message}</span><button aria-label="Fermer le message" onClick={() => setMessage('')}>×</button></div>}
+    <SpacePanel onMessage={setMessage} />
     <OneDrivePanel onLoad={openCloud} onClear={closeAnalysis} onMessage={setMessage} />
     {archive ? <ArchiveViewer key={revision} archive={archive} sources={sources} onMessage={setMessage} /> : !model ? <section className="empty"><div className="empty-mark" aria-hidden="true">▶</div><h2>Ton analyse, dans le navigateur</h2><p>Sélectionne <strong>archive.json</strong> ou <strong>analyse.json</strong> et les médias exportés par l’application. Tu peux aussi associer chaque fichier après l’ouverture.</p><div className="buttons"><label className="button primary">Choisir les fichiers<input type="file" multiple accept=".json,video/*,audio/*,image/*" onChange={e => { openFiles(e.target.files); e.target.value = ''; }} /></label><label className="button">Ouvrir un dossier<input type="file" webkitdirectory="" multiple onChange={e => { openFiles(e.target.files); e.target.value = ''; }} /></label></div><p className="hint">Les fichiers restent sur ton appareil. Aucun compte nécessaire pour ce test.</p></section> : <>
       <Player key={revision} model={model} sources={sources} onMessage={setMessage} />
