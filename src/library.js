@@ -2,6 +2,28 @@
 // Écriture batch (30s) + sauvegarde immédiate sur actions critiques.
 import * as drive from './drive.js';
 
+const CACHE_KEY = 'scp.libraryCache.v1';
+
+function saveToLocalCache(provider, data) {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ provider, data, cachedAt: Date.now() }));
+  } catch { /* quota ou mode privé : on ignore */ }
+}
+
+export function readCache(provider) {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || parsed.provider !== provider) return null;
+    return parsed.data;
+  } catch { return null; }
+}
+
+export function clearCache() {
+  try { localStorage.removeItem(CACHE_KEY); } catch { }
+}
+
 const FILENAME = 'library.json';
 const BATCH_DELAY = 30000; // 30 secondes
 
@@ -21,6 +43,7 @@ async function flush(provider) {
   cache.data.lastUpdate = new Date().toISOString();
   await drive.writeAppFile(provider, FILENAME, JSON.stringify(cache.data, null, 2));
   cache.dirty = false;
+  saveToLocalCache(provider, cache.data);
 }
 
 function scheduleBatch() {
@@ -38,6 +61,7 @@ export async function loadLibrary(provider, owner) {
     const data = JSON.parse(text);
     if (!data || data.schemaVersion !== 1) throw new Error('Format bibliothèque inconnu.');
     cache = { provider, data, dirty: false, timer: null };
+    saveToLocalCache(provider, data);
     return data;
   } catch (e) {
     const notFound = e.status === 404 || /__NOT_FOUND__|itemNotFound|not found|could not be found|The resource/i.test(e.message || '');
@@ -45,6 +69,7 @@ export async function loadLibrary(provider, owner) {
       const fresh = emptyLibrary(owner);
       cache = { provider, data: fresh, dirty: true, timer: null };
       await flush(provider);
+      saveToLocalCache(provider, fresh);
       return fresh;
     }
     throw e;
@@ -128,6 +153,22 @@ export function addFromShare({ sourceUrl, sourceProvider, name, videoCount, dura
   cache.dirty = true;
   flush(cache.provider).catch(e => console.warn(e));
   return entry;
+}
+
+export function analysisSize(analysis) {
+  if (!analysis || !analysis.localFiles) return 0;
+  return Object.values(analysis.localFiles).reduce(
+    (sum, f) => sum + (Number(f && f.size) || 0),
+    0
+  );
+}
+
+export function formatBytes(bytes) {
+  const n = Number(bytes) || 0;
+  if (n < 1024) return n + ' o';
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' Ko';
+  if (n < 1024 * 1024 * 1024) return (n / 1024 / 1024).toFixed(1) + ' Mo';
+  return (n / 1024 / 1024 / 1024).toFixed(2) + ' Go';
 }
 
 export function findById(id) {

@@ -1,15 +1,29 @@
 import React, { useEffect, useState } from 'react';
 import * as library from './library.js';
 import * as storage from './storage.js';
+import * as drive from './drive.js';
 
 export default function LibraryPanel({ provider, account, onOpen, onMessage }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState('all');
+  const [sortBy, setSortBy] = useState('recent');
+  const [quota, setQuota] = useState(null);
+  const [refreshTick, setRefreshTick] = useState(0);
 
   useEffect(() => {
     if (!provider || !account) { setData(null); return; }
-    setLoading(true);
+
+    // 🎯 Étape 1 : afficher immédiatement la version en cache
+    const cached = library.readCache(provider);
+    if (cached) {
+      setData(cached);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
+
+    // 🎯 Étape 2 : charger la version fraîche depuis le Drive
     library.loadLibrary(provider, {
       email: account.email || account.username || '',
       name: account.name || '',
@@ -17,7 +31,12 @@ export default function LibraryPanel({ provider, account, onOpen, onMessage }) {
       .then(d => setData(d))
       .catch(e => onMessage('Bibliothèque : ' + e.message))
       .finally(() => setLoading(false));
-  }, [provider, account, onMessage]);
+
+    // Charger le quota Drive en parallèle (sans bloquer l'affichage)
+    drive.getQuota(provider)
+      .then(q => setQuota(q))
+      .catch(e => console.warn('Quota indisponible :', e.message));
+  }, [provider, account, onMessage, refreshTick]);
 
   if (!provider || !account) {
     return (
@@ -48,11 +67,18 @@ export default function LibraryPanel({ provider, account, onOpen, onMessage }) {
   }
 
   const analyses = data.analyses || [];
-  const filtered = analyses.filter(a => {
-    if (filter === 'favorites') return a.favorite;
-    if (filter === 'unviewed') return !a.viewedAt;
-    return true;
-  });
+  const filtered = analyses
+    .filter(a => {
+      if (filter === 'favorites') return a.favorite;
+      if (filter === 'unviewed') return !a.viewedAt;
+      return true;
+    })
+    .sort((a, b) => {
+      if (sortBy === 'name') return (a.name || '').localeCompare(b.name || '', 'fr');
+      if (sortBy === 'size') return library.analysisSize(b) - library.analysisSize(a);
+      // 'recent' par défaut : plus récent en premier
+      return new Date(b.receivedAt || 0) - new Date(a.receivedAt || 0);
+    });
 
   const toggleFav = (id) => {
     const next = library.toggleFavorite(id);
@@ -94,12 +120,41 @@ export default function LibraryPanel({ provider, account, onOpen, onMessage }) {
     <section className="library">
       <div className="library-header">
         <h2>📚 Ma bibliothèque</h2>
-        <span className="library-count">{analyses.length} analyse{analyses.length > 1 ? 's' : ''}</span>
+        <div className="library-header-actions">
+          <span className="library-count">{analyses.length} analyse{analyses.length > 1 ? 's' : ''}</span>
+          <button className="library-refresh" onClick={() => { library.clearCache(); setRefreshTick(x => x + 1); }} title="Rafraîchir depuis le Drive">
+            🔄 Rafraîchir
+          </button>
+        </div>
       </div>
-      <div className="library-filters">
-        {[['all', 'Toutes'], ['unviewed', 'Non vues'], ['favorites', '⭐ Favoris']].map(([k, l]) => (
-          <button key={k} className={filter === k ? 'active' : ''} onClick={() => setFilter(k)}>{l}</button>
-        ))}
+      {quota && quota.total > 0 && (
+        <div className={`quota-bar ${quota.state === 'critical' ? 'critical' : quota.state === 'nearing' ? 'nearing' : ''}`}>
+          <div className="quota-bar-header">
+            <span>📊 Espace {provider === 'google' ? 'Google Drive' : 'OneDrive'}</span>
+            <span>{library.formatBytes(quota.used)} / {library.formatBytes(quota.total)}</span>
+          </div>
+          <div className="quota-bar-track">
+            <div className="quota-bar-fill" style={{ width: Math.min(100, (quota.used / quota.total) * 100) + '%' }} />
+          </div>
+          <div className="quota-bar-footer">
+            {library.formatBytes(quota.remaining)} restants
+          </div>
+        </div>
+      )}
+      <div className="library-toolbar">
+        <div className="library-filters">
+          {[['all', 'Toutes'], ['unviewed', 'Non vues'], ['favorites', '⭐ Favoris']].map(([k, l]) => (
+            <button key={k} className={filter === k ? 'active' : ''} onClick={() => setFilter(k)}>{l}</button>
+          ))}
+        </div>
+        <label className="library-sort">
+          Trier par&nbsp;:
+          <select value={sortBy} onChange={e => setSortBy(e.target.value)}>
+            <option value="recent">Date récente</option>
+            <option value="name">Nom</option>
+            <option value="size">Taille</option>
+          </select>
+        </label>
       </div>
       {filtered.length === 0 ? (
         <p className="library-empty">
@@ -122,6 +177,9 @@ export default function LibraryPanel({ provider, account, onOpen, onMessage }) {
                   <span>{a.receivedAt ? new Date(a.receivedAt).toLocaleDateString('fr-FR') : ''}</span>
                   {a.videoCount > 0 && <span>{a.videoCount} angle{a.videoCount > 1 ? 's' : ''}</span>}
                   {a.sourceProvider && <span className="provider-tag">{a.sourceProvider === 'google' ? 'Google' : 'OneDrive'}</span>}
+                  {a.localCopy && library.analysisSize(a) > 0 && (
+                    <span className="size-badge">💾 {library.formatBytes(library.analysisSize(a))}</span>
+                  )}
                 </div>
               </button>
               <div className="library-item-actions">

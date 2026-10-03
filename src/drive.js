@@ -147,6 +147,34 @@ export async function writeAppFile(provider, filename, content) {
   throw new Error('Provider inconnu.');
 }
 
+export async function getQuota(provider) {
+  if (provider === 'microsoft') {
+    const res = await msFetch('/me/drive?$select=quota');
+    const data = await res.json();
+    const q = data.quota || {};
+    return {
+      total: Number(q.total || 0),
+      used: Number(q.used || 0),
+      remaining: Number(q.remaining || 0),
+      state: q.state || 'normal',
+    };
+  }
+  if (provider === 'google') {
+    const res = await gFetch('/about?fields=storageQuota');
+    const data = await res.json();
+    const q = data.storageQuota || {};
+    const total = Number(q.limit || 0);
+    const used = Number(q.usage || 0);
+    return {
+      total,
+      used,
+      remaining: total > 0 ? total - used : 0,
+      state: 'normal',
+    };
+  }
+  throw new Error('Provider inconnu.');
+}
+
 export function resetFolderCache() {
   folderIdCache.microsoft = null;
   folderIdCache.google = null;

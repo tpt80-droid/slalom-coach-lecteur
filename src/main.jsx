@@ -304,6 +304,11 @@ function App() {
   }
   async function saveToMyDrive() {
     if (!cloudSource || !model || copyProgress) return;
+    // C3 : garde-fou si aucun provider actif
+    if (!session.provider || !session.account) {
+      setMessage('Connecte-toi d’abord à Microsoft ou Google (voir « Mon espace athlète » plus haut) pour sauvegarder l’analyse dans ton Drive.');
+      return;
+    }
     try {
       setCopyProgress({ done: 0, total: 1, label: 'Préparation…' });
       const result = await storage.copyAnalysisToStorage({

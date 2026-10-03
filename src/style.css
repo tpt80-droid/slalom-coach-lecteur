@@ -1214,3 +1214,124 @@ footer {
     gap: 8px;
     align-items: center;
 }
+
+
+/* Barre d'outils de la bibliothèque (filtres + tri) */
+.library-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 18px;
+    flex-wrap: wrap;
+}
+
+.library-toolbar .library-filters {
+    margin-bottom: 0;
+}
+
+.library-sort {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: .875rem;
+    color: #a9b4c5;
+}
+
+.library-sort select {
+    background: #1e293b;
+    color: #edf1f8;
+    border: 1px solid #3a465a;
+    border-radius: 7px;
+    padding: 6px 10px;
+    font-size: .875rem;
+}
+
+/* Badge de taille sur les analyses copiées */
+.size-badge {
+    background: #253a35;
+    color: #9fe0bd;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: .7rem;
+    font-weight: 600;
+}
+
+/* Barre de quota Drive */
+.quota-bar {
+    background: #1c293c;
+    border: 1px solid #354158;
+    border-radius: 10px;
+    padding: 12px 16px;
+    margin-bottom: 18px;
+}
+
+.quota-bar.critical {
+    border-color: #ef4444;
+}
+
+.quota-bar.nearing {
+    border-color: #f59e0b;
+}
+
+.quota-bar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    font-size: .8rem;
+    color: #a9b4c5;
+}
+
+.quota-bar-header span:last-child {
+    font-weight: 600;
+    color: #edf1f8;
+}
+
+.quota-bar-track {
+    height: 8px;
+    background: #0c1524;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.quota-bar-fill {
+    height: 100%;
+    background: #4ade80;
+    border-radius: 4px;
+    transition: width .3s ease;
+}
+
+.quota-bar.critical .quota-bar-fill {
+    background: #ef4444;
+}
+
+.quota-bar.nearing .quota-bar-fill {
+    background: #f59e0b;
+}
+
+.quota-bar-footer {
+    font-size: .75rem;
+    color: #a9b4c5;
+    margin-top: 6px;
+}
+
+/* Actions du header bibliothèque */
+.library-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.library-refresh {
+    background: #1e293b;
+    border: 1px solid #3a465a;
+    padding: 6px 12px;
+    font-size: .8rem;
+    min-height: 0;
+    border-radius: 6px;
+}
+
+.library-refresh:hover {
+    background: #2d3a50;
+}
