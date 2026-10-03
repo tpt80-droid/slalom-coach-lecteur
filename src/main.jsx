@@ -325,12 +325,46 @@ function App() {
   }
 
   async function openFromLibrary(analysis) {
-    if (!analysis || !analysis.sourceUrl) {
+    if (!analysis) return;
+
+    // 🎯 Cas 1 : copie locale disponible → on charge depuis le Drive de l'athlète
+    if (analysis.localCopy && analysis.localFiles && analysis.localCopyProvider) {
+      try {
+        setMessage('Ouverture depuis ta copie locale…');
+        const ticket = closeAnalysis();
+        const provider = analysis.localCopyProvider;
+        const result = await storage.loadLocalAnalysis({
+          provider,
+          localFiles: analysis.localFiles,
+        });
+        // On garde la trace du cloud source pour info (mais localCopy déjà true)
+        setArchive(null);
+        setModel(result.model);
+        setSources(result.sources);
+        setName(analysis.name || 'Analyse locale');
+        setRevision(n => n + 1);
+        setCloudSource({
+          link: analysis.sourceUrl,
+          provider: analysis.sourceProvider,
+          libraryId: analysis.id,
+          name: analysis.name,
+          localCopy: true,
+        });
+        library.markViewed(analysis.id);
+        return;
+      } catch (e) {
+        setMessage('Copie locale corrompue, on retente depuis la source… (' + e.message + ')');
+        // On continue vers le fallback ci-dessous
+      }
+    }
+
+    // 🎯 Cas 2 : pas de copie locale → on retente depuis le lien source du coach
+    if (!analysis.sourceUrl) {
       setMessage('Cette analyse ne contient pas de lien source. Elle ne peut pas être rouverte automatiquement.');
       return;
     }
     if (analysis.sourceProvider !== 'microsoft') {
-      setMessage("Pour l'instant, seules les analyses OneDrive peuvent être rouvertes. Google Drive arrive bientôt.");
+      setMessage("Cette analyse n'a pas de copie locale. Seules les analyses OneDrive peuvent être re-téléchargées pour l'instant.");
       return;
     }
     try {

@@ -200,6 +200,25 @@ export async function writeAppBinaryFile(provider, filename, blob, mimeType) {
   throw new Error('Provider inconnu.');
 }
 
+export async function readAppBinaryFile(provider, filename) {
+  const folderId = await getFolderId(provider);
+  if (provider === 'microsoft') {
+    const res = await msFetch(
+      `/me/drive/items/${encodeURIComponent(folderId)}:/${encodeURIComponent(filename)}:/content`
+    );
+    return res.blob();
+  }
+  if (provider === 'google') {
+    const q = encodeURIComponent(`name='${filename}' and '${folderId}' in parents and trashed=false`);
+    const search = await gFetch(`/files?q=${q}&fields=files(id)`);
+    const found = await search.json();
+    if (!found.files?.length) throw new Error('__NOT_FOUND__');
+    const res = await gFetch(`/files/${found.files[0].id}?alt=media`);
+    return res.blob();
+  }
+  throw new Error('Provider inconnu.');
+}
+
 export async function listAppFiles(provider) {
   const folderId = await getFolderId(provider);
   if (provider === 'microsoft') {
