@@ -1206,3 +1206,11 @@ footer {
         flex-wrap: wrap;
     }
 }
+
+
+/* Actions du titre de page */
+.page-title-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}

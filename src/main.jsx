@@ -6,6 +6,7 @@ import { validate, visibleEvents, activeAudio, followerTarget, baseName, formatT
 import './style.css';
 import OneDrivePanel from './OneDrivePanel.jsx';
 import { loadAnalysis } from './onedrive.js';
+import * as storage from './storage.js';
 import SpacePanel from './SpacePanel.jsx';
 import LibraryPanel from './LibraryPanel.jsx';
 import * as library from './library.js';
@@ -193,6 +194,8 @@ function App() {
   const [headerView, setHeaderView] = useState('reader');
   const [session, setSession] = useState({ provider: null, account: null });
   const [sessionTick, setSessionTick] = useState(0);
+  const [cloudSource, setCloudSource] = useState(null);
+  const [copyProgress, setCopyProgress] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -250,7 +253,7 @@ function App() {
     } catch (error) { setMessage(error.message); }
   }
   function choose(key, file) { if (!file) return; setSources(previous => ({ ...previous, [key]: bind(key, file) })); setRevision(n => n + 1); setMessage(''); }
-  function closeAnalysis() { loadId.current++; setModel(null); setArchive(null); setSources({}); clearUrls(); return loadId.current; }
+  function closeAnalysis() { loadId.current++; setModel(null); setArchive(null); setSources({}); setCloudSource(null); setCopyProgress(null); clearUrls(); return loadId.current; }
   function detectProvider() {
     try {
       const msAcc = msAuth.msal?.getActiveAccount?.();
@@ -283,13 +286,44 @@ function App() {
             name: result.name,
             videoCount: result.model?.videos?.length || 0,
           });
-          if (entry) setMessage(`📚 Analyse ajoutée à ta bibliothèque : « ${entry.name} »`);
+          if (entry) {
+            setMessage(`📚 Analyse ajoutée à ta bibliothèque : « ${entry.name} »`);
+            setCloudSource({
+              link: result.sourceLink,
+              provider,
+              libraryId: entry.id,
+              name: entry.name,
+              localCopy: !!entry.localCopy,
+            });
+          }
         } catch (e) {
           console.warn('Ajout bibliothèque impossible :', e);
         }
       })();
     }
   }
+  async function saveToMyDrive() {
+    if (!cloudSource || !model || copyProgress) return;
+    try {
+      setCopyProgress({ done: 0, total: 1, label: 'Préparation…' });
+      const result = await storage.copyAnalysisToStorage({
+        provider: cloudSource.provider,
+        analysisId: cloudSource.libraryId,
+        name: cloudSource.name,
+        model,
+        sources,
+        onProgress: p => setCopyProgress(p),
+      });
+      library.updateLocalCopy(cloudSource.libraryId, result);
+      setCloudSource(prev => (prev ? { ...prev, localCopy: true } : prev));
+      setCopyProgress(null);
+      setMessage(`✅ Analyse copiée dans ton Drive. Tu peux la revoir même si le coach supprime la sienne.`);
+    } catch (e) {
+      setCopyProgress(null);
+      setMessage('Copie impossible : ' + e.message);
+    }
+  }
+
   async function openFromLibrary(analysis) {
     if (!analysis || !analysis.sourceUrl) {
       setMessage('Cette analyse ne contient pas de lien source. Elle ne peut pas être rouverte automatiquement.');
@@ -317,8 +351,14 @@ function App() {
       <button className={headerView === 'reader' ? 'active' : ''} onClick={() => switchTab('reader')}>📖 Lecteur</button>
       <button className={headerView === 'library' ? 'active' : ''} onClick={() => switchTab('library')}>📚 Ma bibliothèque</button>
     </nav><div className="header-actions"><span className="local-badge">Fichiers locaux ou OneDrive</span><label className="button secondary">Ouvrir un dossier<input type="file" multiple accept=".json,video/*,audio/*,image/*" onChange={e => { openFiles(e.target.files); e.target.value = ''; }} /></label></div></header>
-    <div className="page-title"><div><p className="eyebrow">ESPACE ATHLÈTE</p><h1>{archive ? 'Revoir la séance' : model ? 'Revoir le passage' : 'Lire une analyse ou une archive'}</h1><p>{archive ? name : model ? `${name} · ${model.videos.length} angle${model.videos.length > 1 ? 's' : ''}` : 'Ouvre une analyse du coach pour retrouver ses dessins et ses commentaires au bon instant.'}</p></div>{(model || archive) && <button onClick={closeAnalysis}>Fermer</button>}</div>
-    {message && <div className="message" role="alert"><span>{message}</span><button aria-label="Fermer le message" onClick={() => setMessage('')}>×</button></div>}
+    <div className="page-title-actions">
+      {model && cloudSource && !cloudSource.localCopy && (
+        <button className="primary" onClick={saveToMyDrive} disabled={!!copyProgress}>
+          {copyProgress ? `⏳ ${copyProgress.done}/${copyProgress.total}` : '💾 Sauvegarder dans mon Drive'}
+        </button>
+      )}
+      {(model || archive) && <button onClick={closeAnalysis}>Fermer</button>}
+    </div>    {message && <div className="message" role="alert"><span>{message}</span><button aria-label="Fermer le message" onClick={() => setMessage('')}>×</button></div>}
     <SpacePanel onMessage={setMessage} />
     <OneDrivePanel onLoad={openCloud} onClear={closeAnalysis} onMessage={setMessage} />
     {headerView === 'library' ? (

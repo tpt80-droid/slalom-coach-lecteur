@@ -130,6 +130,14 @@ export function addFromShare({ sourceUrl, sourceProvider, name, videoCount, dura
   return entry;
 }
 
+export function updateLocalCopy(id, localData) {
+  if (!cache.data) return;
+  const a = cache.data.analyses.find(x => x.id === id);
+  if (!a) return;
+  Object.assign(a, localData);
+  cache.dirty = true;
+  flush(cache.provider).catch(e => console.warn(e));
+}
 
 export function resetLibrary() {
   if (cache.timer) clearTimeout(cache.timer);

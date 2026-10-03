@@ -151,3 +151,90 @@ export function resetFolderCache() {
   folderIdCache.microsoft = null;
   folderIdCache.google = null;
 }
+
+
+// ============================================================
+// Fichiers binaires (vidéos, audios)
+// ============================================================
+
+export async function writeAppBinaryFile(provider, filename, blob, mimeType) {
+  const folderId = await getFolderId(provider);
+  if (provider === 'microsoft') {
+    // PUT /content écrase si existe, crée sinon. Le body est le Blob brut.
+    await msFetch(
+      `/me/drive/items/${encodeURIComponent(folderId)}:/${encodeURIComponent(filename)}:/content`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': mimeType || 'application/octet-stream' },
+        body: blob,
+      }
+    );
+    return filename;
+  }
+  if (provider === 'google') {
+    // Google : 2 étapes (create metadata, puis upload content)
+    const q = encodeURIComponent(`name='${filename}' and '${folderId}' in parents and trashed=false`);
+    const search = await gFetch(`/files?q=${q}&fields=files(id,name)`);
+    const found = await search.json();
+    let fileId;
+    if (found.files?.length) {
+      fileId = found.files[0].id;
+    } else {
+      const create = await gFetch('/files?fields=id', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: filename, parents: [folderId] }),
+      });
+      fileId = (await create.json()).id;
+    }
+    await gFetch(
+      `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': mimeType || 'application/octet-stream' },
+        body: blob,
+      }
+    );
+    return fileId;
+  }
+  throw new Error('Provider inconnu.');
+}
+
+export async function listAppFiles(provider) {
+  const folderId = await getFolderId(provider);
+  if (provider === 'microsoft') {
+    const res = await msFetch(
+      `/me/drive/items/${encodeURIComponent(folderId)}/children?$select=id,name,size`
+    );
+    const data = await res.json();
+    return (data.value || []).map(f => ({ id: f.id, name: f.name, size: f.size }));
+  }
+  if (provider === 'google') {
+    const q = encodeURIComponent(`'${folderId}' in parents and trashed=false`);
+    const res = await gFetch(`/files?q=${q}&fields=files(id,name,size)&pageSize=1000`);
+    const data = await res.json();
+    return (data.files || []).map(f => ({ id: f.id, name: f.name, size: Number(f.size || 0) }));
+  }
+  throw new Error('Provider inconnu.');
+}
+
+export async function deleteAppFile(provider, filename) {
+  const folderId = await getFolderId(provider);
+  if (provider === 'microsoft') {
+    await msFetch(
+      `/me/drive/items/${encodeURIComponent(folderId)}:/${encodeURIComponent(filename)}`,
+      { method: 'DELETE' }
+    );
+    return;
+  }
+  if (provider === 'google') {
+    const q = encodeURIComponent(`name='${filename}' and '${folderId}' in parents and trashed=false`);
+    const search = await gFetch(`/files?q=${q}&fields=files(id)`);
+    const found = await search.json();
+    for (const f of found.files || []) {
+      await gFetch(`/files/${f.id}`, { method: 'DELETE' });
+    }
+    return;
+  }
+  throw new Error('Provider inconnu.');
+}
