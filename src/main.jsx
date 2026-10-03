@@ -363,8 +363,9 @@ function App() {
       setMessage('Cette analyse ne contient pas de lien source. Elle ne peut pas être rouverte automatiquement.');
       return;
     }
-    if (analysis.sourceProvider !== 'microsoft') {
-      setMessage("Cette analyse n'a pas de copie locale. Seules les analyses OneDrive peuvent être re-téléchargées pour l'instant.");
+    const isOneDriveSource = /1drv\.ms|onedrive\.live\.com|sharepoint\.com/i.test(analysis.sourceUrl || '');
+    if (!isOneDriveSource) {
+      setMessage("Cette analyse n'a pas de copie locale. Les liens sources non-OneDrive ne sont pas encore supportés en re-téléchargement.");
       return;
     }
     try {
