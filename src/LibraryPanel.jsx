@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import * as library from './library.js';
+import * as storage from './storage.js';
 
 export default function LibraryPanel({ provider, account, onOpen, onMessage }) {
   const [data, setData] = useState(null);
@@ -59,8 +60,32 @@ export default function LibraryPanel({ provider, account, onOpen, onMessage }) {
     setData({ ...data, analyses: data.analyses.map(a => a.id === id ? { ...a, favorite: next } : a) });
   };
 
-  const remove = (id, name) => {
-    if (!window.confirm(`Retirer « ${name} » de ta bibliothèque ?\n\nLes fichiers dans ton Drive ne sont pas supprimés.`)) return;
+  const remove = async (id, name) => {
+    // Confirm 1 : l'utilisateur veut-il vraiment retirer l'analyse ?
+    if (!window.confirm(`Retirer « ${name} » de ta bibliothèque ?`)) return;
+
+    const analysis = library.findById(id);
+    const hasLocalCopy = analysis?.localCopy && analysis?.localFiles && analysis?.localCopyProvider;
+
+    let deleteFiles = false;
+    if (hasLocalCopy) {
+      // Confirm 2 : bibliothèque seulement OU bibliothèque + fichiers ?
+      deleteFiles = window.confirm(
+        `Supprimer aussi les fichiers copiés dans ton Drive ?\n\n` +
+        `• OK = bibliothèque + fichiers (libère de l'espace)\n` +
+        `• Annuler = bibliothèque seulement (fichiers conservés)`
+      );
+
+      if (deleteFiles) {
+        try {
+          await storage.deleteLocalCopy(analysis.localCopyProvider, analysis.localFiles);
+        } catch (e) {
+          alert(`Suppression des fichiers impossible :\n\n${e.message}\n\nL'analyse est conservée dans ta bibliothèque.`);
+          return; // on n'enlève RIEN de la bibliothèque
+        }
+      }
+    }
+
     library.removeAnalysis(id);
     setData({ ...data, analyses: data.analyses.filter(a => a.id !== id) });
   };
@@ -103,7 +128,7 @@ export default function LibraryPanel({ provider, account, onOpen, onMessage }) {
                 <button onClick={() => toggleFav(a.id)} title={a.favorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}>
                   {a.favorite ? '⭐' : '☆'}
                 </button>
-                <button onClick={() => remove(a.id, a.name)} title="Retirer de la bibliothèque">🗑️</button>
+                <button onClick={() => void remove(a.id, a.name)} title="Retirer de la bibliothèque">🗑️</button>
               </div>
             </li>
           ))}

@@ -130,6 +130,11 @@ export function addFromShare({ sourceUrl, sourceProvider, name, videoCount, dura
   return entry;
 }
 
+export function findById(id) {
+  if (!cache.data) return null;
+  return cache.data.analyses.find(a => a.id === id) || null;
+}
+
 export function updateLocalCopy(id, localData) {
   if (!cache.data) return;
   const a = cache.data.analyses.find(x => x.id === id);
