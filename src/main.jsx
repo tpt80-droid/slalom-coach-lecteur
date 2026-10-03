@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client';
 import { validate, visibleEvents, activeAudio, followerTarget, baseName, formatTime, TYPES } from './timeline.js';
 import './style.css';
 import OneDrivePanel from './OneDrivePanel.jsx';
+import { loadAnalysis } from './onedrive.js';
 import SpacePanel from './SpacePanel.jsx';
 import LibraryPanel from './LibraryPanel.jsx';
 import * as library from './library.js';
@@ -250,7 +251,66 @@ function App() {
   }
   function choose(key, file) { if (!file) return; setSources(previous => ({ ...previous, [key]: bind(key, file) })); setRevision(n => n + 1); setMessage(''); }
   function closeAnalysis() { loadId.current++; setModel(null); setArchive(null); setSources({}); clearUrls(); return loadId.current; }
-  function openCloud(result, ticket) { if (ticket !== loadId.current) return; loadId.current++; clearUrls(); setArchive(result.archive || null); setModel(result.model || null); setSources(result.sources); setName(result.name); setRevision(n => n + 1); }
+  function detectProvider() {
+    try {
+      const msAcc = msAuth.msal?.getActiveAccount?.();
+      if (msAcc) return 'microsoft';
+      const gAcc = gAuth.getAccount?.();
+      if (gAcc) return 'google';
+    } catch { }
+    return null;
+  }
+
+  function openCloud(result, ticket) {
+    if (ticket !== loadId.current) return;
+    loadId.current++;
+    clearUrls();
+    setArchive(result.archive || null);
+    setModel(result.model || null);
+    setSources(result.sources);
+    setName(result.name);
+    setRevision(n => n + 1);
+    const provider = session.provider || detectProvider() || result.sourceProvider || null;
+    if (provider && result.sourceLink) {
+      (async () => {
+        try {
+          if (!library.getLibrary()) {
+            await library.loadLibrary(provider, session.account || { email: '', name: '' });
+          }
+          const entry = library.addFromShare({
+            sourceUrl: result.sourceLink,
+            sourceProvider: provider,
+            name: result.name,
+            videoCount: result.model?.videos?.length || 0,
+          });
+          if (entry) setMessage(`📚 Analyse ajoutée à ta bibliothèque : « ${entry.name} »`);
+        } catch (e) {
+          console.warn('Ajout bibliothèque impossible :', e);
+        }
+      })();
+    }
+  }
+  async function openFromLibrary(analysis) {
+    if (!analysis || !analysis.sourceUrl) {
+      setMessage('Cette analyse ne contient pas de lien source. Elle ne peut pas être rouverte automatiquement.');
+      return;
+    }
+    if (analysis.sourceProvider !== 'microsoft') {
+      setMessage("Pour l'instant, seules les analyses OneDrive peuvent être rouvertes. Google Drive arrive bientôt.");
+      return;
+    }
+    try {
+      setMessage('Ouverture de l’analyse en cours…');
+      const ticket = closeAnalysis();
+      const result = await loadAnalysis(analysis.sourceUrl, {
+        getToken: msAuth.accessToken,
+      });
+      openCloud(result, ticket);
+      library.markViewed(analysis.id);
+    } catch (e) {
+      setMessage('Impossible d’ouvrir l’analyse : ' + e.message);
+    }
+  }
   const audioEvents = model?.events.filter(e => e.type === 'audio') || [];
   return <main>
     <header><div className="brand"><span className="brand-mark">SC</span><div><strong>SLALOM COACH</strong><span>ANALYSE VIDÉO</span></div></div><nav className="header-tabs">
@@ -265,8 +325,7 @@ function App() {
       <LibraryPanel
         provider={session.provider}
         account={session.account}
-        onOpen={(a) => { library.markViewed(a.id); setMessage(`Analyse « ${a.name} » — ouvre-la avec son lien de partage.`); switchTab('reader'); }}
-        onMessage={setMessage}
+        onOpen={(a) => { switchTab('reader'); openFromLibrary(a); }} onMessage={setMessage}
       />
     ) : (
       <>

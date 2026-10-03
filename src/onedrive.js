@@ -61,6 +61,6 @@ export async function loadAnalysis(link,{signal,fetcher=fetch,getToken}={}){
     if(!cache.has(name))cache.set(name,await download(matches[0]));
     sources[key]=cache.get(name);
   }
-  return {model,archive,sources,name:archive?.collection.name||folder.name||'Analyse OneDrive'};
+  return {model,archive,sources,name:archive?.collection.name||folder.name||'Analyse OneDrive',sourceLink:link,sourceProvider:'microsoft'};
 }
 

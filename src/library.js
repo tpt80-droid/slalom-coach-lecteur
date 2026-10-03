@@ -94,6 +94,43 @@ export async function flushNow() {
   await flush(cache.provider);
 }
 
+export function findBySource(sourceUrl) {
+  if (!cache.data || !sourceUrl) return null;
+  return cache.data.analyses.find(a => a.sourceUrl === sourceUrl) || null;
+}
+
+export function addFromShare({ sourceUrl, sourceProvider, name, videoCount, duration, coachName }) {
+  if (!cache.data) return null;
+  const existing = findBySource(sourceUrl);
+  if (existing) {
+    if (name) existing.name = name;
+    if (videoCount) existing.videoCount = videoCount;
+    if (duration) existing.duration = duration;
+    if (coachName) existing.coachName = coachName;
+    cache.dirty = true;
+    scheduleBatch();
+    return existing;
+  }
+  const entry = {
+    id: 'lib-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8),
+    name: name || 'Analyse',
+    coachName: coachName || '',
+    sourceProvider: sourceProvider || 'microsoft',
+    sourceUrl,
+    receivedAt: new Date().toISOString(),
+    viewedAt: null,
+    favorite: false,
+    videoCount: videoCount || 0,
+    duration: duration || 0,
+    localCopy: false,
+  };
+  cache.data.analyses.unshift(entry);
+  cache.dirty = true;
+  flush(cache.provider).catch(e => console.warn(e));
+  return entry;
+}
+
+
 export function resetLibrary() {
   if (cache.timer) clearTimeout(cache.timer);
   cache = { provider: null, data: null, dirty: false, timer: null };
